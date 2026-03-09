@@ -232,8 +232,7 @@ async def vote_handler(call: CallbackQuery):
 
 async def start_bot():
     logging.info("Bot polling started")
-    await dp.start_polling(bot)
-
+    await dp.start_polling(bot, handle_signals=False)
 
 def run_bot():
     asyncio.run(start_bot())
