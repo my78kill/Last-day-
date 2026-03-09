@@ -1,6 +1,7 @@
 import asyncio
 import threading
 import os
+import logging
 
 from flask import Flask
 
@@ -11,9 +12,9 @@ from aiogram.filters import Command
 from config import BOT_TOKEN, NIGHT_DURATION, DAY_DURATION
 from game_manager import GameSession
 from keyboards import vote_keyboard
-from keep_alive import keep_alive
 
-keep_alive()
+# logging (important for Render logs)
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -26,7 +27,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Virus Outbreak Bot is running!"
+    return "🧬 Virus Outbreak Bot is running!"
 
 # ---------------- BOT COMMANDS ----------------
 
@@ -107,11 +108,6 @@ with buttons to vote for a player.
 
 🦠 Virus Team → outnumber survivors  
 🛡 Survivors → eliminate all infected
-
-━━━━━━━━━━━━━━
-
-⚠ Make sure to **start the bot in DM**
-otherwise you won't receive role messages.
 """
 
     await message.answer(text)
@@ -213,27 +209,31 @@ async def day_phase(chat):
 @dp.callback_query()
 async def vote_handler(call: CallbackQuery):
 
-    chat = call.message.chat.id
     user = call.from_user.id
+    data = call.data
 
-    game = games.get(chat)
-
-    if not game:
+    if not data.startswith("vote_"):
         return
 
-    if call.data.startswith("vote_"):
+    target = int(data.split("_")[1])
 
-        target = int(call.data.split("_")[1])
+    for chat_id, game in games.items():
 
-        game.vote(user, target)
+        if user in game.players:
 
-        await call.answer("Vote counted")
+            game.vote(user, target)
+
+            await call.answer("Vote counted")
+
+            return
 
 
 # ---------------- BOT RUNNER ----------------
 
 async def start_bot():
+    logging.info("Bot polling started")
     await dp.start_polling(bot)
+
 
 def run_bot():
     asyncio.run(start_bot())
@@ -243,10 +243,12 @@ def run_bot():
 
 if __name__ == "__main__":
 
-    # run bot in thread
-    bot_thread = threading.Thread(target=run_bot)
+    # start bot thread
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
 
-    # run flask server
+    # start flask web server (required for Render)
     port = int(os.environ.get("PORT", 10000))
+    logging.info(f"Starting Flask server on port {port}")
+
     app.run(host="0.0.0.0", port=port)
