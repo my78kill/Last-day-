@@ -1,4 +1,8 @@
 import asyncio
+import threading
+import os
+
+from flask import Flask
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message, CallbackQuery
@@ -15,6 +19,16 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
 games = {}
+
+# ---------------- FLASK SERVER ----------------
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Virus Outbreak Bot is running!"
+
+# ---------------- BOT COMMANDS ----------------
 
 @dp.message(Command("start"))
 async def bot_start(message: Message):
@@ -61,6 +75,7 @@ Good luck surviving the outbreak… 🧬
 
     await message.answer(welcome_text)
 
+
 @dp.message(Command("help"))
 async def help_cmd(message: Message):
 
@@ -70,7 +85,7 @@ async def help_cmd(message: Message):
 🎮 **Game Commands**
 
 /join → Join the game lobby  
-/startgame → Start the match (min 8 players)  
+/startgame → Start the match (min 8 players)
 
 ━━━━━━━━━━━━━━
 
@@ -91,7 +106,7 @@ with buttons to vote for a player.
 🏆 **Win Conditions**
 
 🦠 Virus Team → outnumber survivors  
-🛡 Survivors → eliminate all infected  
+🛡 Survivors → eliminate all infected
 
 ━━━━━━━━━━━━━━
 
@@ -114,28 +129,23 @@ async def join(message: Message):
 
     game = games[chat]
 
-    if game.add_player(user,name):
-
+    if game.add_player(user, name):
         await message.reply(f"{name} joined the game")
-
     else:
-
         await message.reply("Already joined")
+
 
 @dp.message(Command("startgame"))
 async def start_game(message: Message):
 
     chat = message.chat.id
-
     game = games.get(chat)
 
     if not game:
         return
 
     if len(game.players) < 8:
-
         await message.reply("Need at least 8 players")
-
         return
 
     game.distribute_roles()
@@ -145,7 +155,7 @@ async def start_game(message: Message):
         role = game.roles[uid]
 
         try:
-            await bot.send_message(uid,f"Your role: {role}")
+            await bot.send_message(uid, f"Your role: {role}")
         except:
             pass
 
@@ -155,11 +165,15 @@ async def start_game(message: Message):
 
     await day_phase(chat)
 
+
 async def day_phase(chat):
 
     game = games[chat]
 
-    players = {uid:name for uid,name in game.players.items() if uid in game.alive}
+    players = {
+        uid: name for uid, name in game.players.items()
+        if uid in game.alive
+    }
 
     for uid in players:
 
@@ -167,7 +181,7 @@ async def day_phase(chat):
             await bot.send_message(
                 uid,
                 "Vote a player",
-                reply_markup=vote_keyboard(players,uid)
+                reply_markup=vote_keyboard(players, uid)
             )
         except:
             pass
@@ -177,24 +191,24 @@ async def day_phase(chat):
     eliminated = game.resolve_votes()
 
     if eliminated:
-
-        await bot.send_message(chat,f"💀 {game.players[eliminated]} eliminated")
+        await bot.send_message(chat, f"💀 {game.players[eliminated]} eliminated")
 
     win = game.check_win()
 
     if win:
 
-        await bot.send_message(chat,f"🏆 {win} win!")
+        await bot.send_message(chat, f"🏆 {win} win!")
 
         del games[chat]
 
     else:
 
-        await bot.send_message(chat,"Next round begins")
+        await bot.send_message(chat, "Next round begins")
 
         await asyncio.sleep(5)
 
         await day_phase(chat)
+
 
 @dp.callback_query()
 async def vote_handler(call: CallbackQuery):
@@ -211,14 +225,28 @@ async def vote_handler(call: CallbackQuery):
 
         target = int(call.data.split("_")[1])
 
-        game.vote(user,target)
+        game.vote(user, target)
 
         await call.answer("Vote counted")
 
-async def main():
 
+# ---------------- BOT RUNNER ----------------
+
+async def start_bot():
     await dp.start_polling(bot)
+
+def run_bot():
+    asyncio.run(start_bot())
+
+
+# ---------------- MAIN ----------------
 
 if __name__ == "__main__":
 
-    asyncio.run(main())
+    # run bot in thread
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.start()
+
+    # run flask server
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
